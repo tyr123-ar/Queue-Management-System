@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QueueWait — Online Queuing System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <style>
+    :root{
+      --brand-500:#4f46e5; 
+      --brand-600:#4338ca; 
+      --muted:#6b7280;
+      --glass: rgba(255,255,255,0.6);
+      --card: rgba(255,255,255,0.9);
+    }
+    body{font-family: 'Poppins', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;}
+    .hero-bg{background: linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(34,211,238,0.06) 35%, rgba(167,139,250,0.06) 100%);} 
+    .glass-card{backdrop-filter: blur(8px); background: linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.7));}
+    .modal-backdrop{background: rgba(0,0,0,0.42);}
+    @media (prefers-reduced-motion: no-preference){
+      .fade-up{transform:translateY(8px);opacity:0;animation:fadeUp .6s ease forwards}
+      @keyframes fadeUp{to{transform:none;opacity:1}}
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+  const firebaseConfig = {
+    apiKey: "AIzaSyAWjCTyIxFe5-1T-_hR9a-A5MXip6OoBl0",
+    authDomain: "queuewait-1fe40.firebaseapp.com",
+    projectId: "queuewait-1fe40",
+    storageBucket: "queuewait-1fe40.appspot.com",
+    messagingSenderId: "479393210684",
+    appId: "1:479393210684:web:fe8a586be1b775efce3e39",
+    measurementId: "G-NCLB5JPSQ1"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const FieldValue = firebase.firestore.FieldValue;
+  const { useState, useEffect, useRef } = React;
+
+  const Logo = ({className}) => (
+    <div className={"flex items-center gap-3 " + (className||"") }>
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-teal-400 flex items-center justify-center text-white font-bold">QW</div>
+      <div className="font-semibold text-lg">QueueWait</div>
+    </div>
+  );
+
+  const PrimaryButton = ({children, onClick, className}) => (
+    <button onClick={onClick} className={"inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold shadow-md bg-gradient-to-r from-indigo-600 to-indigo-500 text-white hover:from-indigo-500 hover:to-indigo-600 focus:outline-none "+(className||"")}>{children}</button>
+  );
+
+  function Landing({onOpenAuth}){
+    return (
+      <div className="min-h-screen hero-bg">
+        <header className="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+          <Logo/>
+          <nav className="flex items-center gap-4">
+            <a href="#features" className="text-sm text-gray-600 hover:text-gray-900">Features</a>
+            <a href="#how" className="text-sm text-gray-600 hover:text-gray-900">How it works</a>
+            <a href="#contact" className="text-sm text-gray-600 hover:text-gray-900">Contact</a>
+            <button onClick={() => onOpenAuth('login')} className="text-sm px-4 py-2 rounded-md border border-transparent hover:bg-white/40">Login</button>
+            <PrimaryButton onClick={() => onOpenAuth('signup')}>Get Started</PrimaryButton>
+          </nav>
+        </header>
+
+        <main className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          <section className="space-y-6">
+            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Skip the line. <span className="text-indigo-600">QueueWait</span> — your digital queue manager.</h1>
+            <p className="text-gray-600 text-lg">Join queues remotely, get live ETA notifications, and improve customer flow — perfect for shops, clinics, and campus stalls.</p>
+            <div className="flex gap-3 items-center">
+              <PrimaryButton onClick={() => onOpenAuth('signup')}>Create Account</PrimaryButton>
+              <button onClick={() => onOpenAuth('login')} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700">Demo account</button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="bg-white p-4 rounded-xl shadow-sm glass-card">
+                <div className="text-sm text-gray-500">Avg wait</div>
+                <div className="text-2xl font-bold">~8 min</div>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm glass-card">
+                <div className="text-sm text-gray-500">Shops onboard</div>
+                <div className="text-2xl font-bold">120+</div>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm glass-card">
+                <div className="text-sm text-gray-500">Happy users</div>
+                <div className="text-2xl font-bold">4.8 ★</div>
+              </div>
+            </div>
+
+          </section>
+
+          <aside className="relative">
+            <div className="rounded-2xl p-6 shadow-2xl bg-white">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-500">Nearby — Nanda Market</div>
+                <div className="text-xs text-gray-400">Open</div>
+              </div>
+              <div className="mt-4">
+                <div className="text-lg font-semibold">Sagar Sweets</div>
+                <div className="text-gray-500 text-sm">4 people in queue — ~20 min</div>
+                <div className="mt-4 flex gap-3">
+                  <button className="px-4 py-2 rounded-md bg-indigo-50 text-indigo-700 font-medium">View</button>
+                  <button className="px-4 py-2 rounded-md bg-gray-100">Join</button>
+                </div>
+              </div>
+            </div>
+            <div className="absolute -right-6 -bottom-8 w-72 h-40 rounded-2xl bg-gradient-to-br from-indigo-200 to-teal-100 opacity-60 transform rotate-6 blur-xl"></div>
+          </aside>
+        </main>
+
+        <section id="features" className="max-w-6xl mx-auto px-6 py-12">
+          <div className="text-center mb-8">
+            <h3 className="text-indigo-600 font-semibold">Features</h3>
+            <h2 className="text-2xl font-bold mt-2">Everything you need to manage queues smoothly</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-6 bg-white rounded-xl shadow-md fade-up">
+              <div className="text-xl font-semibold">Real-time Queue</div>
+              <p className="text-gray-500 mt-2">Join and monitor queues live with accurate ETAs and notifications.</p>
+            </div>
+            <div className="p-6 bg-white rounded-xl shadow-md fade-up">
+              <div className="text-xl font-semibold">Shop Controls</div>
+              <p className="text-gray-500 mt-2">Shopkeepers can open/close queues, serve next, and add offline customers.</p>
+            </div>
+            <div className="p-6 bg-white rounded-xl shadow-md fade-up">
+              <div className="text-xl font-semibold">Analytics</div>
+              <p className="text-gray-500 mt-2">Simple metrics to understand peak times and reduce wait times.</p>
+            </div>
+          </div>
+        </section>
+
+        <footer id="contact" className="bg-white mt-12 border-t">
+          <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <Logo/>
+              <p className="text-sm text-gray-500 mt-2">Made with ♥ for smoother waits.</p>
+            </div>
+            <div className="flex gap-4 items-center">
+              <a href="#" className="text-sm text-gray-600">Privacy</a>
+              <a href="#" className="text-sm text-gray-600">Terms</a>
+              <a href="#" className="text-sm text-gray-600">Support</a>
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  function AuthModal({ mode, onClose, onAuthSuccess, onForgotPassword }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [authMode, setAuthMode] = useState(mode); // handles switching login/signup easily
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (authMode === "signup" && password !== confirmPassword) {
+      setError("❌ Passwords do not match!");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (authMode === "login") {
+        await auth.signInWithEmailAndPassword(email, password);
+      } else {
+        const userCred = await auth.createUserWithEmailAndPassword(email, password);
+        await db.collection("users").doc(userCred.user.uid).set({
+          email,
+          name: email.split("@")[0],
+          role: "customer",
+          createdAt: new Date().toISOString(),
+        });
+      }
+      onAuthSuccess();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchMode = () => {
+    setAuthMode(authMode === "login" ? "signup" : "login");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setError("");
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-lg">
+        <h2 className="text-xl font-semibold mb-4 text-center">
+          {authMode === "login" ? "Log in to QueueWait" : "Create your QueueWait account"}
+        </h2>
+
+        {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
+
+        <form onSubmit={handleAuth} className="space-y-3">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md"
+            required
+          />
+
+          {/* Confirm password only for signup */}
+          {authMode === "signup" && (
+            <input
+              type="password"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className={`w-full px-3 py-2 border rounded-md ${
+                confirmPassword && confirmPassword !== password ? "border-red-400" : ""
+              }`}
+              required
+            />
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full px-3 py-2 bg-indigo-600 text-white rounded-md"
+          >
+            {loading
+              ? "Please wait..."
+              : authMode === "login"
+              ? "Log in"
+              : "Create Account"}
+          </button>
+        </form>
+
+        <div className="mt-4 text-sm text-center text-gray-600">
+          {authMode === "login" ? (
+            <>
+              Don’t have an account?{" "}
+              <button onClick={switchMode} className="text-indigo-600 underline">
+                Sign up
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <button onClick={switchMode} className="text-indigo-600 underline">
+                Log in
+              </button>
+            </>
+          )}
+        </div>
+
+        {authMode === "login" && (
+          <div className="mt-2 text-center">
+            <button
+              onClick={onForgotPassword}
+              className="text-sm text-gray-500 hover:text-indigo-600"
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+  function JoinConfirmModal({shop, onCancel, onConfirm}){
+    return (
+      <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl glass-card">
+          <h3 className="text-lg font-semibold">Confirm Join</h3>
+          <p className="text-gray-600 mt-2">Join <strong>{shop.shopName}</strong> queue for <strong>₹5</strong>?</p>
+          <div className="mt-4 flex gap-3">
+            <button onClick={onConfirm} className="px-4 py-2 rounded-lg bg-indigo-600 text-white">Confirm</button>
+            <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-gray-100">Cancel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function ForgotPasswordModal({ onClose }) {
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleReset = async () => {
+    setMessage("");
+    setLoading(true);
+    try {
+      await auth.sendPasswordResetEmail(email);
+      setMessage("✅ Reset link sent! Check your inbox.");
+    } catch (err) {
+      if (err.code === "auth/user-not-found") setMessage("❌ No user found with that email.");
+      else if (err.code === "auth/invalid-email") setMessage("⚠️ Enter a valid email address.");
+      else setMessage("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-lg font-semibold">Reset Password</div>
+          <button onClick={onClose} className="text-gray-400">✕</button>
+        </div>
+        <input
+          type="email"
+          placeholder="Enter your registered email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md mb-3"
+        />
+        {message && <div className="text-sm text-indigo-600 mb-2">{message}</div>}
+        <div className="flex gap-3">
+          <button
+            onClick={handleReset}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+          >
+            {loading ? "Sending..." : "Send Link"}
+          </button>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function EditProfileModal({ user, userData, onClose, onPasswordChange }) {
+  const [name, setName] = useState(userData.name || "");
+  const [role, setRole] = useState(userData.role || "customer");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await db.collection("users").doc(user.uid).update({ name, role });
+
+      // Create a shop document if the user becomes a shopkeeper
+      if (role === "shopkeeper") {
+        const shopDoc = await db.collection("shops").doc(user.uid).get();
+        if (!shopDoc.exists) {
+          await db.collection("shops").doc(user.uid).set({
+            ownerId: user.uid,
+            shopName: `${name}'s Shop`,
+            isOpen: false,
+            queue: [],
+          });
+        }
+      }
+
+      setMessage("✅ Profile updated successfully!");
+      setTimeout(onClose, 1000);
+    } catch (err) {
+      setMessage("❌ Error: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-lg font-semibold">Edit Profile</div>
+          <button onClick={onClose} className="text-gray-400">✕</button>
+        </div>
+
+        <div className="space-y-3">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name"
+            className="w-full px-3 py-2 border rounded-md"
+          />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md"
+          >
+            <option value="customer">Customer</option>
+            <option value="shopkeeper">Shopkeeper</option>
+          </select>
+
+          {message && <div className="text-sm text-indigo-600">{message}</div>}
+
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+            <button
+              onClick={onPasswordChange}
+              className="px-4 py-2 bg-gray-100 rounded-lg"
+            >
+              Change Password
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleChangePassword = async () => {
+    setMessage("");
+    setLoading(true);
+
+    try {
+      if (!currentPassword || !newPassword) {
+        setMessage("⚠️ Please fill in both fields.");
+        setLoading(false);
+        return;
+      }
+
+      if (currentPassword === newPassword) {
+        setMessage("❌ New password cannot be the same as the current one.");
+        setLoading(false);
+        return;
+      }
+
+      const user = auth.currentUser;
+      const cred = firebase.auth.EmailAuthProvider.credential(
+        user.email,
+        currentPassword
+      );
+
+      // Reauthenticate first
+      await user.reauthenticateWithCredential(cred);
+
+      // Update password
+      await user.updatePassword(newPassword);
+
+      setMessage("✅ Password updated successfully!");
+      setTimeout(onClose, 1500);
+    } catch (err) {
+      console.error("Password change error:", err);
+      if (err.code === "auth/wrong-password")
+        setMessage("❌ Incorrect current password.");
+      else if (err.code === "auth/weak-password")
+        setMessage("⚠️ New password is too weak (min 6 characters).");
+      else if (err.code === "auth/requires-recent-login")
+        setMessage("⚠️ Please log in again and try.");
+      else setMessage("❌ Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-lg font-semibold">Change Password</div>
+          <button onClick={onClose} className="text-gray-400">✕</button>
+        </div>
+
+        <input
+          type="password"
+          placeholder="Current Password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md mb-3"
+        />
+        <input
+          type="password"
+          placeholder="New Password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md mb-3"
+        />
+
+        {message && <div className="text-sm text-indigo-600 mb-2">{message}</div>}
+
+        <div className="flex gap-3">
+          <button
+            onClick={handleChangePassword}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+          >
+            {loading ? "Updating..." : "Update"}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-100 rounded-lg"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+//   function EditProfileModal({ user, userData, onClose, onPasswordChange }) {
+//   const [name, setName] = useState(userData.name || "");
+//   const [role, setRole] = useState(userData.role || "customer");
+//   const [saving, setSaving] = useState(false);
+//   const [message, setMessage] = useState("");
+
+//   const handleSave = async () => {
+//     setSaving(true);
+//     try {
+//       await db.collection("users").doc(user.uid).update({ name, role });
+//       if (role === "shopkeeper") {
+//         const shopDoc = await db.collection("shops").doc(user.uid).get();
+//         if (!shopDoc.exists) {
+//           await db.collection("shops").doc(user.uid).set({
+//             ownerId: user.uid,
+//             shopName: name + "'s Shop",
+//             isOpen: false,
+//             queue: [],
+//           });
+//         }
+//       }
+//       setMessage("Profile updated successfully!");
+//       setTimeout(onClose, 1000);
+//     } catch (err) {
+//       setMessage("Error: " + err.message);
+//     } finally {
+//       setSaving(false);
+//     }
+//   };
+
+//   return (
+//     <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+//       <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl">
+//         <div className="flex justify-between items-center mb-4">
+//           <div className="text-lg font-semibold">Edit Profile</div>
+//           <button onClick={onClose} className="text-gray-400">✕</button>
+//         </div>
+//         <div className="space-y-3">
+//           <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="w-full px-3 py-2 border rounded-md" />
+//           <select value={role} onChange={e => setRole(e.target.value)} className="w-full px-3 py-2 border rounded-md">
+//             <option value="customer">Customer</option>
+//             <option value="shopkeeper">Shopkeeper</option>
+//           </select>
+//           {message && <div className="text-sm text-indigo-600">{message}</div>}
+//           <div className="flex gap-3 mt-4">
+//             <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
+//               {saving ? "Saving..." : "Save"}
+//             </button>
+//             <button onClick={onPasswordChange} className="px-4 py-2 bg-gray-100 rounded-lg">Change Password</button>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+// function ChangePasswordModal({ onClose }) {
+//   const [currentPassword, setCurrentPassword] = useState("");
+//   const [newPassword, setNewPassword] = useState("");
+//   const [message, setMessage] = useState("");
+
+//   const reauthenticate = async (currentPassword) => {
+//     const user = auth.currentUser;
+//     const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+//     await user.reauthenticateWithCredential(cred);
+//   };
+
+//   const handleChangePassword = async () => {
+//   setMessage("");
+//   setLoading(true);
+//   try {
+//     if (!currentPassword || !newPassword) {
+//       setMessage("Please fill in both fields.");
+//       setLoading(false);
+//       return;
+//     }
+
+//     if (currentPassword === newPassword) {
+//       setMessage("New password cannot be the same as the current one.");
+//       setLoading(false);
+//       return;
+//     }
+
+//     const user = auth.currentUser;
+//     const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+
+//     await user.reauthenticateWithCredential(cred);
+
+//     await user.updatePassword(newPassword);
+
+//     setMessage("✅ Password updated successfully!");
+//     setTimeout(onClose, 1500);
+//   } catch (err) {
+//     console.error("Password change error:", err);
+//     if (err.code === "auth/wrong-password") setMessage("❌ Incorrect current password.");
+//     else if (err.code === "auth/weak-password") setMessage("⚠️ New password is too weak (min 6 characters).");
+//     else if (err.code === "auth/requires-recent-login") setMessage("⚠️ Please log in again and try.");
+//     else setMessage("Error: " + err.message);
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
+//   return (
+//     <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+//       <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
+//         <div className="flex justify-between items-center mb-4">
+//           <div className="text-lg font-semibold">Change Password</div>
+//           <button onClick={onClose} className="text-gray-400">✕</button>
+//         </div>
+//         <input type="password" placeholder="Current Password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} className="w-full px-3 py-2 border rounded-md mb-3" />
+//         <input type="password" placeholder="New Password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-md mb-3" />
+//         {message && <div className="text-sm text-indigo-600 mb-2">{message}</div>}
+//         <div className="flex gap-3">
+//           <button onClick={handleChangePassword} disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
+//   {loading ? "Updating..." : "Update"}
+// </button>
+//           <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+  function QueueStatusModal({shop, userId, onClose, onLeave}){
+    if(!shop) return null;
+    const position = shop.queue ? shop.queue.findIndex(p=>p.userId===userId) : -1;
+    const peopleAhead = position > -1 ? position : null;
+    const estWait = peopleAhead !== null ? peopleAhead * 5 : null;
+    return (
+      <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl">
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-lg font-semibold">{shop.shopName}</h3>
+              <div className="text-sm text-gray-500">{shop.queue?.length || 0} people in queue</div>
+            </div>
+            <button onClick={onClose} className="text-gray-400">✕</button>
+          </div>
+          <div className="mt-4">
+            {peopleAhead === null ? (
+              <p className="text-gray-600">You are not in this queue.</p>
+            ) : (
+              <div>
+                <p className="text-gray-600">Position: <span className="font-semibold">{peopleAhead + 1}</span></p>
+                <p className="text-gray-600 mt-2">People ahead: <strong>{peopleAhead}</strong></p>
+                <p className="text-gray-600 mt-2">Estimated wait: <strong>{estWait} min</strong></p>
+                <div className="mt-4 flex gap-3">
+                  <button onClick={onLeave} className="px-4 py-2 rounded-lg bg-red-500 text-white">Leave Queue</button>
+                  <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-100">Close</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function Dashboard({user, userData, onLogout}){
+    const [profileModal, setProfileModal] = useState(false);
+    const [passwordModal, setPasswordModal] = useState(false);
+    const [shops, setShops] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [confirmJoinShop, setConfirmJoinShop] = useState(null);
+    const [viewingShop, setViewingShop] = useState(null);
+    const [userQueues, setUserQueues] = useState([]); 
+
+    useEffect(()=>{
+      const unsub = db.collection('shops').onSnapshot(snap=>{
+        const data = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        setShops(data);
+        setLoading(false);
+
+        if(user){
+          const presence = data.filter(s=> s.queue && s.queue.find(p=>p.userId === user.uid)).map(s=>s.id);
+          setUserQueues(presence);
+        }
+      }, err=>{ console.error(err); setLoading(false); });
+      return ()=>unsub();
+    },[user]);
+
+    const handleJoinQueue = async (shopId) => {
+      if(!user || !userData) return alert('Login required');
+      try{
+        const shopRef = db.collection('shops').doc(shopId);
+        await shopRef.update({
+          queue: FieldValue.arrayUnion({
+            userId: user.uid,
+            name: userData.name || user.email,
+            joinTime: new Date().toISOString(),
+            status: 'waiting'
+          })
+        });
+        setConfirmJoinShop(null);
+      }catch(e){ console.error(e); alert('Failed to join: '+e.message); }
+    };
+
+    const handleLeaveQueue = async (shopId) => {
+      if(!user) return;
+      try{
+        const shopRef = db.collection('shops').doc(shopId);
+        const shopDoc = await shopRef.get();
+        const shopData = shopDoc.data();
+        const userEntry = shopData.queue?.find(p=>p.userId === user.uid);
+        if(userEntry){
+          await shopRef.update({ queue: FieldValue.arrayRemove(userEntry) });
+        }
+        setViewingShop(null);
+      }catch(e){ console.error(e); alert('Failed to leave: '+e.message); }
+    };
+
+    const handleToggleOpen = async (shopId, current) => {
+      try{ await db.collection('shops').doc(shopId).update({ isOpen: !current }); }
+      catch(e){ console.error(e); }
+    };
+    const handleServeNext = async (shopId) => {
+      try{
+        const shopRef = db.collection('shops').doc(shopId);
+        const docSnap = await shopRef.get();
+        const shopData = docSnap.data();
+        if(!shopData.queue || shopData.queue.length === 0) return;
+        const next = shopData.queue[0];
+        const newQueue = shopData.queue.slice(1);
+        await shopRef.update({ queue: newQueue });
+      }catch(e){ console.error(e); }
+    };
+    const handleAddOfflineUser = async (shopId, name) => {
+      if(!name) return;
+      try{
+        await db.collection('shops').doc(shopId).update({
+          queue: FieldValue.arrayUnion({ userId: `offline_${Date.now()}`, name: name + ' (Offline)', joinTime: new Date().toISOString() })
+        });
+      }catch(e){ console.error(e); }
+    };
+
+    const isUserInShop = (shop) => !!(shop.queue && shop.queue.find(p=>p.userId === user.uid));
+
+    if(loading) return <div className="min-h-screen flex items-center justify-center"> <div className="text-xl font-semibold">Loading QueueWait...</div> </div>;
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <Logo/>
+            <div className="flex items-center gap-3">
+  <div className="text-sm text-gray-600">Hi, <span className="font-medium">{userData?.name || user.email}</span></div>
+  <button onClick={() => setProfileModal(true)} className="px-3 py-2 rounded-md bg-gray-100 text-gray-700">Edit Profile</button>
+  <button onClick={onLogout} className="px-3 py-2 rounded-md bg-indigo-50 text-indigo-700">Logout</button>
+</div>
+</div>
+        </header>
+
+        <main className="max-w-6xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-2xl p-6 shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">Nearby Shops</h3>
+                  <div className="text-sm text-gray-500">Auto-updating list</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {shops.map(s=> (
+                    <div key={s.id} className="p-4 rounded-lg border hover:shadow-md transition-shadow bg-white">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold">{s.shopName}</div>
+                          <div className="text-sm text-gray-500">{s.location?.lat ? `${(Math.abs(28.6139 - s.location.lat)).toFixed(2)} km` : ''} • {s.queue?.length || 0} people</div>
+                        </div>
+                        <div className="text-sm text-gray-400">{s.isOpen? 'Open':'Closed'}</div>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button onClick={()=> setViewingShop(s)} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-md">View</button>
+
+                        {userData?.role === 'shopkeeper' && s.ownerId === user.uid ? (
+                          <div className="flex gap-2">
+                            <button onClick={()=> handleToggleOpen(s.id, s.isOpen)} className="px-3 py-2 bg-gray-100 rounded-md">{s.isOpen ? 'Close' : 'Open'}</button>
+                            <button onClick={()=> handleServeNext(s.id)} className="px-3 py-2 bg-indigo-600 text-white rounded-md">Serve Next</button>
+                          </div>
+                        ) : (
+                          isUserInShop(s) ? (
+                            <button onClick={()=> setViewingShop(s)} className="px-3 py-2 bg-gray-100 rounded-md">Joined</button>
+                          ) : (
+                            <button onClick={()=> setConfirmJoinShop(s)} disabled={!s.isOpen} className={`px-3 py-2 rounded-md ${s.isOpen ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>Join</button>
+                          )
+                        )}
+                      </div>
+
+                      {/* Shopkeeper: offline add form */}
+                      {userData?.role === 'shopkeeper' && s.ownerId === user.uid && (
+                        <div className="mt-4">
+                          <OfflineAdd ownerShopId={s.id} onAdd={(name)=>handleAddOfflineUser(s.id, name)} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6 bg-white rounded-2xl p-6 shadow">
+                <h3 className="text-lg font-semibold mb-3">Announcements</h3>
+                <p className="text-gray-600">No announcements yet. Shopkeepers can add notices from their dashboard.</p>
+              </div>
+            </div>
+
+            <aside>
+              <div className="sticky top-6 bg-white rounded-2xl p-6 shadow">
+                <h4 className="font-semibold">Your Summary</h4>
+                <div className="mt-4 flex flex-col gap-3">
+                  <div className="p-3 bg-gray-50 rounded-md">
+                    <div className="text-sm text-gray-500">Joined queues</div>
+                    <div className="text-xl font-bold">{userQueues.length}</div>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-md">
+                    <div className="text-sm text-gray-500">Active bookings</div>
+                    <div className="text-xl font-bold">{userQueues.length}</div>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <button onClick={()=>alert('Feature: notifications coming soon')} className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white">Enable notifications</button>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </main>
+
+
+
+        
+        {/* Modals */}
+
+        {confirmJoinShop && <JoinConfirmModal shop={confirmJoinShop} onCancel={()=>setConfirmJoinShop(null)} onConfirm={()=> handleJoinQueue(confirmJoinShop.id)} />}
+        {viewingShop && <QueueStatusModal shop={viewingShop} userId={user.uid} onClose={()=>setViewingShop(null)} onLeave={()=> handleLeaveQueue(viewingShop.id)} />}
+        {profileModal && <EditProfileModal user={user} userData={userData} onClose={()=>setProfileModal(false)} onPasswordChange={()=>{setProfileModal(false); setPasswordModal(true);}} />}
+        {passwordModal && <ChangePasswordModal onClose={()=>setPasswordModal(false)} />}
+
+      </div>
+    );
+  }
+
+  function OfflineAdd({ownerShopId, onAdd}){
+    const [name, setName] = useState('');
+    return (
+      <form onSubmit={(e)=>{ e.preventDefault(); onAdd(name); setName(''); }} className="flex gap-2">
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Add offline" className="flex-grow px-3 py-2 border rounded-md" />
+        <button type="submit" className="px-3 py-2 bg-green-500 text-white rounded-md">Add</button>
+      </form>
+    );
+  }
+  function App(){
+    const [user, setUser] = useState(null);
+    const [userData, setUserData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [authModal, setAuthModal] = useState(null);
+    const [forgotPassword, setForgotPassword] = useState(false);
+
+    useEffect(()=>{
+      const unsub = auth.onAuthStateChanged(async (u)=>{
+        if(u){
+          try{
+            const doc = await db.collection('users').doc(u.uid).get();
+            if(doc.exists) setUserData(doc.data());
+            setUser(u);
+          }catch(e){ console.error('Error fetching user doc', e); }
+        } else { setUser(null); setUserData(null); }
+        setLoading(false);
+      });
+      return ()=>unsub();
+    },[]);
+
+    if(loading) return (<div className="min-h-screen flex items-center justify-center"> <div className="text-xl font-semibold">Loading QueueWait...</div> </div>);
+
+    if(!user) return (
+      <div>
+        <Landing onOpenAuth={(m)=>setAuthModal(m)} />
+        {authModal && (
+  <AuthModal
+    mode={authModal}
+    onClose={() => setAuthModal(null)}
+    onAuthSuccess={() => setAuthModal(null)}
+    onForgotPassword={() => setForgotPassword(true)}   
+  />
+)}
+        {forgotPassword && <ForgotPasswordModal onClose={() => setForgotPassword(false)} />}    
+      </div>
+    );
+
+    return (
+      <Dashboard user={user} userData={userData} onLogout={()=>auth.signOut()} />
+    );
+  }
+// <a
+//   href="support.html"
+//   class="text-indigo-600 hover:underline font-medium ml-4"
+// >
+//   💬 Customer Support
+// </a>
+<footer class="bg-gray-100 py-6 mt-10 border-t">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center text-gray-600 text-sm">
+    <div>© 2025 QueueWait. All rights reserved.</div>
+    <div class="flex gap-4 mt-3 md:mt-0">
+      <a href="support.html" class="hover:text-indigo-600">Customer Support</a>
+      <a href="#" class="hover:text-indigo-600">Privacy Policy</a>
+      <a href="#" class="hover:text-indigo-600">Terms of Service</a>
+    </div>
+  </div>
+</footer>
+
+  ReactDOM.render(<App/>, document.getElementById('root'));
+  </script>
+</body>
+</html>
