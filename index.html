@@ -13,6 +13,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAWT3lJ_2buJZggIYQ7UAuNDS3e_KsR8CA&libraries=places"></script>
   <style>
     :root{
       --brand-500:#4f46e5; 
@@ -361,11 +362,73 @@ function EditProfileModal({ user, userData, onClose, onPasswordChange }) {
   const [role, setRole] = useState(userData.role || "customer");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [shopLocation, setShopLocation] = useState(userData.location || null);
+  const [showHistory, setShowHistory] = useState(false);
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+  if (role !== "shopkeeper") return;
+
+  const defaultLoc = shopLocation || { lat: 28.6139, lng: 77.2090 }; // Default: Delhi
+  const map = new google.maps.Map(document.getElementById("shop-map"), {
+    center: defaultLoc,
+    zoom: 14,
+  });
+
+  let marker = new google.maps.Marker({
+    position: defaultLoc,
+    map,
+    draggable: true,
+  });
+
+  // 🧭 Autocomplete search setup
+  const input = document.getElementById("shop-location-search");
+  const autocomplete = new google.maps.places.Autocomplete(input);
+  autocomplete.bindTo("bounds", map);
+
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+    if (!place.geometry || !place.geometry.location) return;
+
+    map.setCenter(place.geometry.location);
+    map.setZoom(15);
+
+    marker.setPosition(place.geometry.location);
+
+    setShopLocation({
+      lat: place.geometry.location.lat(),
+      lng: place.geometry.location.lng(),
+    });
+  });
+
+  // 🖱️ Manual drag update
+  google.maps.event.addListener(marker, "dragend", (event) => {
+    const loc = {
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng(),
+    };
+    setShopLocation(loc);
+  });
+}, [role]);
+
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await db.collection("users").doc(user.uid).update({ name, role });
+
+      if (role === "shopkeeper" && shopLocation) {
+  await db.collection("shops").doc(user.uid).set(
+    {
+      ownerId: user.uid,
+      shopName: name + "'s Shop",
+      isOpen: false,
+      queue: [],
+      location: shopLocation,
+    },
+    { merge: true }
+  );
+}
 
       // Create a shop document if the user becomes a shopkeeper
       if (role === "shopkeeper") {
@@ -412,29 +475,128 @@ function EditProfileModal({ user, userData, onClose, onPasswordChange }) {
             <option value="customer">Customer</option>
             <option value="shopkeeper">Shopkeeper</option>
           </select>
+          {role === "shopkeeper" && (
+          <div className="mt-4">
+            <div className="text-sm font-medium mb-1">Select Shop Location:</div>
+            <input
+              id="shop-location-search"
+              type="text"
+              placeholder="Search shop name or address"
+              className="w-full px-3 py-2 mb-2 border rounded-md"
+            />
+            <div id="shop-map" style={{ height: "250px", borderRadius: "10px" }}></div>
+
+            {/* 📍 Add this part below the map */}
+            {shopLocation && (
+              <div className="text-xs text-gray-600 mt-2">
+                📍 Selected Location: {shopLocation.lat.toFixed(4)}, {shopLocation.lng.toFixed(4)}
+              </div>
+            )}
+          </div>
+        )}
+
 
           {message && <div className="text-sm text-indigo-600">{message}</div>}
 
           <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
-            >
+            <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
               {saving ? "Saving..." : "Save"}
             </button>
-            <button
-              onClick={onPasswordChange}
-              className="px-4 py-2 bg-gray-100 rounded-lg"
-            >
-              Change Password
-            </button>
+            <button onClick={onPasswordChange} className="px-4 py-2 bg-gray-100 rounded-lg">Change Password</button>
           </div>
+
+          {/* 🧾 Collapsible User History Section */}
+          <hr className="my-4" />
+          <div
+            className="flex items-center justify-between cursor-pointer select-none"
+            onClick={() => setShowHistory(!showHistory)}
+          >
+            <h4 className="text-lg font-semibold mb-2">Your Previous Queues</h4>
+            <span className={`transition-transform duration-300 ${showHistory ? "rotate-180" : ""}`}>
+              ▼
+            </span>
+          </div>
+          {showHistory && <UserHistory user={user} />}
+
+
         </div>
       </div>
     </div>
   );
 }
+
+function UserHistory({ user }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = db
+      .collection("userHistory")
+      .doc(user.uid)
+      .collection("entries")
+      .orderBy("joinedAt", "desc")
+      .onSnapshot((snapshot) => {
+        setHistory(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setLoading(false);
+      });
+    return () => unsub();
+  }, [user]);
+
+  const handleDelete = async (id) => {
+    if (confirm("Delete this history entry?")) {
+      await db
+        .collection("userHistory")
+        .doc(user.uid)
+        .collection("entries")
+        .doc(id)
+        .delete();
+    }
+  };
+
+  if (loading) return <p className="text-sm text-gray-500">Loading history...</p>;
+  if (history.length === 0) return <p className="text-sm text-gray-500">No previous queues yet.</p>;
+
+  return (
+    <div className="max-h-60 overflow-y-auto space-y-2 mt-2">
+      {history.map((item) => (
+        <div
+          key={item.id}
+          className="p-3 rounded-md border bg-gray-50 flex justify-between items-center hover:bg-gray-100 transition"
+        >
+          <div>
+            <div className="font-medium">{item.shopName}</div>
+            <div className="text-xs text-gray-500">
+              {new Date(item.joinedAt).toLocaleString()}
+            </div>
+            <div
+              className={`font-semibold text-sm mt-1 ${
+                item.status === "Completed"
+                  ? "text-green-600"
+                  : item.status === "Abandoned"
+                  ? "text-red-500"
+                  : "text-indigo-600"
+              }`}
+            >
+              {item.status}
+            </div>
+            <div className="text-gray-500 text-xs">Refund: {item.refund}</div>
+          </div>
+
+          {/* 🗑️ Delete Button */}
+          <button
+            onClick={() => handleDelete(item.id)}
+            className="text-red-500 hover:text-red-700 text-sm font-semibold ml-3"
+            title="Delete this entry"
+          >
+            🗑
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 function ChangePasswordModal({ onClose }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -532,131 +694,6 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
-
-
-//   function EditProfileModal({ user, userData, onClose, onPasswordChange }) {
-//   const [name, setName] = useState(userData.name || "");
-//   const [role, setRole] = useState(userData.role || "customer");
-//   const [saving, setSaving] = useState(false);
-//   const [message, setMessage] = useState("");
-
-//   const handleSave = async () => {
-//     setSaving(true);
-//     try {
-//       await db.collection("users").doc(user.uid).update({ name, role });
-//       if (role === "shopkeeper") {
-//         const shopDoc = await db.collection("shops").doc(user.uid).get();
-//         if (!shopDoc.exists) {
-//           await db.collection("shops").doc(user.uid).set({
-//             ownerId: user.uid,
-//             shopName: name + "'s Shop",
-//             isOpen: false,
-//             queue: [],
-//           });
-//         }
-//       }
-//       setMessage("Profile updated successfully!");
-//       setTimeout(onClose, 1000);
-//     } catch (err) {
-//       setMessage("Error: " + err.message);
-//     } finally {
-//       setSaving(false);
-//     }
-//   };
-
-//   return (
-//     <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
-//       <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl">
-//         <div className="flex justify-between items-center mb-4">
-//           <div className="text-lg font-semibold">Edit Profile</div>
-//           <button onClick={onClose} className="text-gray-400">✕</button>
-//         </div>
-//         <div className="space-y-3">
-//           <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="w-full px-3 py-2 border rounded-md" />
-//           <select value={role} onChange={e => setRole(e.target.value)} className="w-full px-3 py-2 border rounded-md">
-//             <option value="customer">Customer</option>
-//             <option value="shopkeeper">Shopkeeper</option>
-//           </select>
-//           {message && <div className="text-sm text-indigo-600">{message}</div>}
-//           <div className="flex gap-3 mt-4">
-//             <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
-//               {saving ? "Saving..." : "Save"}
-//             </button>
-//             <button onClick={onPasswordChange} className="px-4 py-2 bg-gray-100 rounded-lg">Change Password</button>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-// function ChangePasswordModal({ onClose }) {
-//   const [currentPassword, setCurrentPassword] = useState("");
-//   const [newPassword, setNewPassword] = useState("");
-//   const [message, setMessage] = useState("");
-
-//   const reauthenticate = async (currentPassword) => {
-//     const user = auth.currentUser;
-//     const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
-//     await user.reauthenticateWithCredential(cred);
-//   };
-
-//   const handleChangePassword = async () => {
-//   setMessage("");
-//   setLoading(true);
-//   try {
-//     if (!currentPassword || !newPassword) {
-//       setMessage("Please fill in both fields.");
-//       setLoading(false);
-//       return;
-//     }
-
-//     if (currentPassword === newPassword) {
-//       setMessage("New password cannot be the same as the current one.");
-//       setLoading(false);
-//       return;
-//     }
-
-//     const user = auth.currentUser;
-//     const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
-
-//     await user.reauthenticateWithCredential(cred);
-
-//     await user.updatePassword(newPassword);
-
-//     setMessage("✅ Password updated successfully!");
-//     setTimeout(onClose, 1500);
-//   } catch (err) {
-//     console.error("Password change error:", err);
-//     if (err.code === "auth/wrong-password") setMessage("❌ Incorrect current password.");
-//     else if (err.code === "auth/weak-password") setMessage("⚠️ New password is too weak (min 6 characters).");
-//     else if (err.code === "auth/requires-recent-login") setMessage("⚠️ Please log in again and try.");
-//     else setMessage("Error: " + err.message);
-//   } finally {
-//     setLoading(false);
-//   }
-// };
-
-//   return (
-//     <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
-//       <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
-//         <div className="flex justify-between items-center mb-4">
-//           <div className="text-lg font-semibold">Change Password</div>
-//           <button onClick={onClose} className="text-gray-400">✕</button>
-//         </div>
-//         <input type="password" placeholder="Current Password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} className="w-full px-3 py-2 border rounded-md mb-3" />
-//         <input type="password" placeholder="New Password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-md mb-3" />
-//         {message && <div className="text-sm text-indigo-600 mb-2">{message}</div>}
-//         <div className="flex gap-3">
-//           <button onClick={handleChangePassword} disabled={loading} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
-//   {loading ? "Updating..." : "Update"}
-// </button>
-//           <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg">Cancel</button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
   function QueueStatusModal({shop, userId, onClose, onLeave}){
     if(!shop) return null;
     const position = shop.queue ? shop.queue.findIndex(p=>p.userId===userId) : -1;
@@ -700,6 +737,8 @@ function ChangePasswordModal({ onClose }) {
     const [confirmJoinShop, setConfirmJoinShop] = useState(null);
     const [viewingShop, setViewingShop] = useState(null);
     const [userQueues, setUserQueues] = useState([]); 
+    const [userLocation, setUserLocation] = useState(null);
+    const [nearbyPlaces, setNearbyPlaces] = useState([]);
 
     useEffect(()=>{
       const unsub = db.collection('shops').onSnapshot(snap=>{
@@ -715,21 +754,151 @@ function ChangePasswordModal({ onClose }) {
       return ()=>unsub();
     },[user]);
 
+    // 🗺️ Fetch real nearby shops using Google Places API
+    useEffect(() => {
+      navigator.geolocation.getCurrentPosition(
+      (pos) => {
+      const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setUserLocation(loc);
+
+      const map = new google.maps.Map(document.getElementById("map"), {
+        center: loc,
+        zoom: 15,
+      });
+
+      const service = new google.maps.places.PlacesService(map);
+      const request = {
+        location: loc,
+        radius: 2000, // 2 km range
+        type: ["store"], // you can also try 'restaurant' or 'supermarket'
+      };
+
+      service.nearbySearch(request, (results, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          setNearbyPlaces(results);
+          results.forEach((place) => {
+            new google.maps.Marker({
+              position: place.geometry.location,
+              map,
+              title: place.name,
+            });
+          });
+        }
+      });
+    },
+    (err) => console.warn("Location error:", err)
+  );
+}, []);
+
+
+    useEffect(() => {
+  if (shops.length === 0) return;
+
+  // Get user's location first
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const map = new google.maps.Map(document.getElementById("map"), {
+        center: userLoc,
+        zoom: 14,
+      });
+
+      // Add user marker
+      new google.maps.Marker({
+        position: userLoc,
+        map,
+        title: "You are here",
+        icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+      });
+
+      // Add shop markers
+      shops.forEach((shop) => {
+        if (shop.location) {
+          new google.maps.Marker({
+            position: shop.location,
+            map,
+            title: shop.shopName,
+          });
+        }
+      });
+    },
+    (err) => console.warn("Geolocation error:", err)
+  );
+}, [shops]);
+
+
     const handleJoinQueue = async (shopId) => {
-      if(!user || !userData) return alert('Login required');
-      try{
-        const shopRef = db.collection('shops').doc(shopId);
-        await shopRef.update({
-          queue: FieldValue.arrayUnion({
-            userId: user.uid,
-            name: userData.name || user.email,
-            joinTime: new Date().toISOString(),
-            status: 'waiting'
-          })
-        });
-        setConfirmJoinShop(null);
-      }catch(e){ console.error(e); alert('Failed to join: '+e.message); }
-    };
+  if (!user || !userData) return alert("Login required");
+  try {
+    const shopRef = db.collection("shops").doc(shopId);
+    const shopDoc = await shopRef.get();
+    const shopData = shopDoc.data();
+
+    // 🧾 Add user to shop queue
+    await shopRef.update({
+      queue: FieldValue.arrayUnion({
+        userId: user.uid,
+        name: userData.name || user.email,
+        joinTime: new Date().toISOString(),
+        status: "waiting",
+      }),
+    });
+
+    // 🕓 Record history entry (no duplicates)
+    await db.collection("userHistory")
+      .doc(user.uid)
+      .collection("entries")
+      .add({
+        shopId,
+        shopName: shopData.shopName,
+        joinedAt: Date.now(),
+        status: "In Queue",
+        refund: "Pending",
+      });
+
+    setConfirmJoinShop(null);
+  } catch (e) {
+    console.error(e);
+    alert("Failed to join: " + e.message);
+  }
+};
+
+
+    const calculateBestLeaveTime = (place) => {
+  if (!userLocation) return alert("Location not available yet");
+
+  const service = new google.maps.DistanceMatrixService();
+  service.getDistanceMatrix(
+    {
+      origins: [userLocation],
+      destinations: [place.geometry.location],
+      travelMode: "DRIVING",
+    },
+    (response, status) => {
+      if (status !== "OK") return alert("Failed to get ETA");
+      const travelTimeMin =
+        response.rows[0].elements[0].duration.value / 60; // seconds → minutes
+
+      // Approximation: use Firestore queue data if exists, else random
+      const queueWait = Math.floor(Math.random() * 15) + 5; // simulate avg waiting time
+
+      const timeToLeave =
+        queueWait > travelTimeMin
+          ? queueWait - travelTimeMin
+          : 0;
+
+      if (timeToLeave <= 0)
+        alert(`🚗 Leave now! Travel time: ${Math.round(travelTimeMin)} min`);
+      else
+        alert(
+          `🕓 You can leave in ~${Math.round(
+            timeToLeave
+          )} min to reach just in time. (Queue wait ≈ ${queueWait} min)`
+        );
+    }
+  );
+};
+
 
     const handleLeaveQueue = async (shopId) => {
       if(!user) return;
@@ -739,8 +908,26 @@ function ChangePasswordModal({ onClose }) {
         const shopData = shopDoc.data();
         const userEntry = shopData.queue?.find(p=>p.userId === user.uid);
         if(userEntry){
-          await shopRef.update({ queue: FieldValue.arrayRemove(userEntry) });
-        }
+        await shopRef.update({ queue: FieldValue.arrayRemove(userEntry) });
+
+        // 🕓 Update user history when leaving before completion
+        await db.collection('userHistory')
+          .doc(user.uid)
+          .collection('entries')
+          .where('shopId', '==', shopId)
+          .orderBy('joinedAt', 'desc')
+          .limit(1)
+          .get()
+          .then(snapshot => {
+            snapshot.forEach(doc => {
+              doc.ref.update({
+                status: 'Abandoned',
+                refund: 'Forfeited',
+              });
+            });
+          });
+      }
+
         setViewingShop(null);
       }catch(e){ console.error(e); alert('Failed to leave: '+e.message); }
     };
@@ -750,16 +937,54 @@ function ChangePasswordModal({ onClose }) {
       catch(e){ console.error(e); }
     };
     const handleServeNext = async (shopId) => {
-      try{
-        const shopRef = db.collection('shops').doc(shopId);
-        const docSnap = await shopRef.get();
-        const shopData = docSnap.data();
-        if(!shopData.queue || shopData.queue.length === 0) return;
-        const next = shopData.queue[0];
-        const newQueue = shopData.queue.slice(1);
-        await shopRef.update({ queue: newQueue });
-      }catch(e){ console.error(e); }
-    };
+  try {
+    const shopRef = db.collection("shops").doc(shopId);
+    const docSnap = await shopRef.get();
+    const shopData = docSnap.data();
+
+    if (!shopData.queue || shopData.queue.length === 0) {
+      alert("No one in the queue!");
+      return;
+    }
+
+    // 🧍 Get first person from queue
+    const next = shopData.queue[0];
+    const newQueue = shopData.queue.slice(1);
+
+    // 🏪 Update queue (remove served user)
+    await shopRef.update({ queue: newQueue });
+
+    // ✅ Find the user’s most recent history doc manually
+    const userHistRef = db.collection("userHistory")
+      .doc(next.userId)
+      .collection("entries");
+
+    const userHistSnap = await userHistRef.orderBy("joinedAt", "desc").limit(5).get();
+
+    let targetDoc = null;
+    userHistSnap.forEach((d) => {
+      const data = d.data();
+      if (data.shopId === shopId && data.status === "In Queue") {
+        targetDoc = d.ref;
+      }
+    });
+
+    if (targetDoc) {
+      await targetDoc.update({
+        status: "Completed",
+        refund: "Returned",
+      });
+      console.log("✅ History updated for user:", next.userId);
+    } else {
+      console.warn("⚠️ No matching In Queue entry found for", next.userId);
+    }
+
+  } catch (err) {
+    console.error("ServeNext Error:", err);
+  }
+};
+
+
     const handleAddOfflineUser = async (shopId, name) => {
       if(!name) return;
       try{
@@ -790,11 +1015,46 @@ function ChangePasswordModal({ onClose }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="bg-white rounded-2xl p-6 shadow">
+              <div id="map" style={{ height: '300px', borderRadius: '12px', marginBottom: '20px' }}></div>
+              <div id="map" style={{ height: '300px', borderRadius: '12px', marginBottom: '20px' }}></div>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold">Nearby Shops</h3>
                   <div className="text-sm text-gray-500">Auto-updating list</div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {nearbyPlaces.length > 0 && (
+                    <div className="mt-8">
+                      <h3 className="text-xl font-semibold mb-3">Nearby Real Shops (Google Maps)</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {nearbyPlaces.map((place, i) => (
+                          <div key={i} className="p-4 bg-white rounded-lg shadow border">
+                            <div className="font-semibold">{place.name}</div>
+                            <div className="text-sm text-gray-500">
+                              {place.vicinity || "Unknown location"}
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                onClick={() => calculateBestLeaveTime(place)}
+                                className="px-3 py-2 bg-indigo-600 text-white rounded-md"
+                              >
+                                Smart ETA
+                              </button>
+                              <a
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                                  place.name
+                                )}`}
+                                target="_blank"
+                                className="px-3 py-2 bg-gray-100 rounded-md"
+                              >
+                                Open in Maps
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {shops.map(s=> (
                     <div key={s.id} className="p-4 rounded-lg border hover:shadow-md transition-shadow bg-white">
                       <div className="flex justify-between items-start">
@@ -807,6 +1067,19 @@ function ChangePasswordModal({ onClose }) {
 
                       <div className="mt-4 flex gap-2">
                         <button onClick={()=> setViewingShop(s)} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-md">View</button>
+                        <button
+                                onClick={() => {
+                                  const queueWait = (s.queue?.length || 0) * 5; // 5 min per customer
+                                  const leaveIn = queueWait - (s.travelTime || 0);
+                                  if (leaveIn <= 0)
+                                    alert(`🚗 Leave now! Travel time: ${s.durationText}`);
+                                  else
+                                    alert(`🕓 Leave in ~${Math.round(leaveIn)} min to reach just in time.`);
+                                }}
+                                className="px-3 py-2 bg-green-500 text-white rounded-md"
+                              >
+                                Smart ETA
+                              </button>
 
                         {userData?.role === 'shopkeeper' && s.ownerId === user.uid ? (
                           <div className="flex gap-2">
@@ -819,7 +1092,7 @@ function ChangePasswordModal({ onClose }) {
                           ) : (
                             <button onClick={()=> setConfirmJoinShop(s)} disabled={!s.isOpen} className={`px-3 py-2 rounded-md ${s.isOpen ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>Join</button>
                           )
-                        )}
+                        )}  
                       </div>
 
                       {/* Shopkeeper: offline add form */}
@@ -944,5 +1217,8 @@ function ChangePasswordModal({ onClose }) {
 
   ReactDOM.render(<App/>, document.getElementById('root'));
   </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAWT3lJ_2buJZggIYQ7UAuNDS3e_KsR8CA"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAWT3lJ_2buJZggIYQ7UAuNDS3e_KsR8CA&libraries=places"></script>
+  
 </body>
 </html>
